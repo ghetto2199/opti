@@ -4,12 +4,13 @@ CC=clang
 COPTS=-O3 -Wall -Wextra
 LLVM_OPT_OPTS=-std-compile-opts
 
-VER=-3.5
+VER=-3.6
 LLVM_AS=llvm-as$(VER)
 LLVM_LINK=llvm-link$(VER)
 LLVM_LLC=llc$(VER)
 LLVM_OPT=opt$(VER)
 LLVM_DIS=llvm-dis$(VER)
+OPT_LLC=$(LLVM_OPT) -O3 -o - | $(LLVM_LLC) -O3 -o -
 
 test: test.cpp test0.s
 	g++ test.cpp test0.s -O3 -o test
@@ -57,5 +58,20 @@ test1-3.s: test1-2.bc
 	llc -O3 -o test1-3.s test1-2.bc
 
 clean:
-	rm -rf *.s *.o *.bc uint.optimized.ll
+	rm -rf *.s *.o *.bc uint.optimized.ll mul.ll
 
+mul.ll: mul.txt
+	python gen_mul.py mul.ll 64
+mul86.ll: mul.txt
+	python gen_mul.py mul86.ll 32
+opt: mul.ll
+	cat mul.ll | $(OPT_LLC) -x86-asm-syntax=intel -mattr=bmi2 -march=x86-64
+opt86: mul86.ll
+	cat mul86.ll | $(OPT_LLC) -x86-asm-syntax=intel -mattr=bmi2 -march=x86
+opt-arm: mul.ll
+	cat mul.ll | $(OPT_LLC) -march=arm
+
+asm: gen.cpp
+	clang++ -I ../../mcl/src -I ../../cybozulib/include gen.cpp -o gen
+	./gen > t.ll
+	cat t.ll | $(OPT_LLC) -x86-asm-syntax=intel -mattr=bmi2 -march=x86-64

@@ -1,0 +1,122 @@
+declare { i$(bit), i1 } @llvm.usub.with.overflow.i$(bit)(i$(bit) %x, i$(bit) %y)
+
+define i$(unit) @extract$(bit)(i$(bit) %x, i$(bit) %shift) {
+	%t0 = lshr i$(bit) %x, %shift
+	%t1 = trunc i$(bit) %t0 to i$(unit)
+	ret i$(unit) %t1
+}
+define i$(unit) @extractHigh$(unit)(i$(unit*2) %x) {
+	%t0 = lshr i$(unit*2) %x, $(unit)
+	%t1 = trunc i$(unit*2) %t0 to i$(unit)
+	ret i$(unit) %t1
+}
+define i$(unit*2) @mul$(unit)x$(unit)(i$(unit) %x, i$(unit) %y) {
+	%x0 = zext i$(unit) %x to i$(unit*2)
+	%y0 = zext i$(unit) %y to i$(unit*2)
+	%z = mul i$(unit*2) %x0, %y0
+	ret i$(unit*2) %z
+}
+
+@define u2 = unit*2
+define i$(u2) @mulPos$(unit)x$(unit)(i$(unit)* %px, i$(unit) %y, i$(unit) %i)
+{
+	%p = getelementptr i$(unit)* %px, i$(unit) %i
+	%x = load i$(unit)* %p
+	%xy = call i$(u2) @mul$(unit)x$(unit)(i$(unit) %x, i$(unit) %y)
+	ret i$(u2) %xy
+}
+
+@define bu = bit + unit
+define i$(bu) @mulPv$(bit)x$(unit)(i$(unit)* %px, i$(unit) %y)
+{
+@for i, 0, N
+	%x$(i)y = call i$(u2) @mulPos$(unit)x$(unit)(i$(unit) *%px, i$(unit) %y, i$(unit) $(i))
+	%L$(i) = trunc i$(u2) %x$(i)y to i$(unit)
+	%H$(i) = call i$(unit) @extractHigh$(unit)(i$(u2) %x$(i)y)
+@endfor
+
+@for i, 1, N
+	%L$(i)e = zext i$(unit) %L$(i) to i$(bit)
+@if i > 1
+	%L$(i)es = shl i$(bit) %L$(i)e, $(unit * i - unit)
+@endif
+@endfor
+@if N > 2
+	%Lt1 = or i$(bit) %L1e, %L2es
+@endif
+@for i, 1, N - 2
+	%Lt$(i+1) = or i$(bit) %Lt$(i), %L$(i+2)es
+@endfor
+
+	%H0e = zext i$(unit) %H0 to i$(bit)
+@for i, 1, N
+	%H$(i)e = zext i$(unit) %H$(i) to i$(bit)
+	%H$(i)es = shl i$(bit) %H$(i)e, $(unit * i)
+@endfor
+	%Ht1 = or i$(bit) %H0e, %H1es
+@for i, 2, N
+	%Ht$(i) = or i$(bit) %Ht$(i-1), %H$(i)es
+@endfor
+@if N == 2
+	%t = add i$(bit) %Ht$(N-1), %L1e
+@else
+	%t = add i$(bit) %Ht$(N-1), %Lt$(N-2)
+@endif
+
+	%t1 = zext i$(bit) %t to i$(bu)
+	%t2 = shl i$(bu) %t1, $(unit)
+	%t3 = zext i$(unit) %L0 to i$(bu)
+	%t4 = or i$(bu) %t2, %t3
+	ret i$(bu) %t4
+}
+
+@define u2 = unit*2
+define void @mcl_fp_mul_UnitPre$(bit)(i$(bu)* %pz, i$(unit)* %px, i$(unit) %y)
+{
+  %z = call i$(bu) @mulPv$(bit)x$(unit)(i$(unit)* %px, i$(unit) %y)
+  store i$(bu) %z, i$(bu) *%pz
+  ret void
+}
+
+@define bu = bit + unit
+define void @mcl_fpDbl_mulPre$(bit)(i$(unit)* %pz, i$(unit)* %px, i$(unit)* %py) {
+  %y0 = load i$(unit)* %py
+  %xy0 = call i$(bu) @mulPv$(bit)x$(unit)(i$(unit) *%px, i$(unit) %y0)
+  %z0 = trunc i$(bu) %xy0 to i$(unit)
+  store i$(unit) %z0, i$(unit)* %pz
+  %t0 = lshr i$(bu) %xy0, $(unit)
+
+@for i, 1, N
+  %py$(i) = getelementptr i$(unit)* %py, i32 $(i)
+  %y$(i) = load i$(unit)* %py$(i)
+  %xy$(i) = call i$(bu) @mulPv$(bit)x$(unit)(i$(unit)* %px, i$(unit) %y$(i))
+  %a$(i) = add i$(bu) %t$(i-1), %xy$(i)
+  %z$(i) = trunc i$(bu) %a$(i) to i$(unit)
+  %pz$(i) = getelementptr i$(unit)* %pz, i32 $(i)
+  @if i < N - 1
+    store i$(unit) %z$(i), i$(unit)* %pz$(i)
+    %t$(i) = lshr i$(bu) %a$(i), $(unit)
+  @endif
+@endfor
+
+  %pz$(N-1)e = bitcast i$(unit)* %pz$(N-1) to i$(bu)*
+  store i$(bu) %a$(N-1), i$(bu)* %pz$(N-1)e
+
+  ret void
+}
+
+@define S = ((521 + unit - 1) / unit) * unit
+define void @setP521(i$(S)* %pp) {
+	%p = sub i521 0, 1
+	%pe = zext i521 %p to i$(S)
+	store i$(S) %pe, i$(S)* %pp
+	ret void
+}
+define i1 @cmpP521(i$(S)* %px) {
+	%x = load i$(S)* %px
+	%xt = trunc i$(S) %x to i521
+	%p = sub i521 0, 1
+	%c = icmp eq i521 %p, %xt
+	ret i1 %c
+}
+
